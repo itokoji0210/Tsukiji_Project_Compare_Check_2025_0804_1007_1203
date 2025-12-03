@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>築地・定点ビフォーアフター比較（フェード＋スライダー）</title>
+<meta name="color-scheme" content="light dark" />
+<style>
+  :root{
+    --bg:#0b0f14; --fg:#e9edf3; --muted:#9aa3b2;
+    --panel:#131926; --card:#0f1520; --border:#263044; --accent:#4da3ff;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family: system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,sans-serif;
+    line-height:1.6;
+  }
+  .wrap{max-width:1200px; margin:0 auto; padding:12px clamp(8px,2vw,20px)}
+  header{margin-bottom:8px}
+  h1{margin:4px 0 8px; font-size: clamp(18px,2.4vw,26px)}
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:10px; box-shadow:0 8px 28px rgba(0,0,0,.28);
+  }
+  .grid{display:grid; grid-template-columns: 1fr 1fr; gap:10px}
+  label{font-size:12px; color:var(--muted)}
+  select,button,input[type=range]{
+    background:var(--card); color:var(--fg);
+    border:1px solid var(--border); border-radius:12px;
+    padding:10px 12px; font-size:14px;
+  }
+  button{cursor:pointer}
+  .row{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .seg{display:inline-flex; border:1px solid var(--border); border-radius:12px; overflow:hidden}
+  .seg button{background:transparent; border:0; padding:10px 14px; font-size:14px; color:var(--muted)}
+  .seg button.active{ background:var(--card); color:var(--fg) }
+  .hint{font-size:12px; color:var(--muted)}
+  .status{font-size:12px; color:var(--muted); display:flex; gap:12px; flex-wrap:wrap}
+  .status strong{color:var(--fg)}
+
+  .viewerShell{
+    margin-top:10px; background:var(--card);
+    border:1px solid var(--border); border-radius:14px; overflow:hidden;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  .viewer{position:relative; width:100%; height:100%; user-select:none; touch-action:none; background:#0a0e13}
+  .layer{position:absolute; inset:0; display:grid; place-items:center}
+  .layer img{
+    width:100%; height:100%; object-fit:contain;
+    transform:translateZ(0);
+  }
+  #imgA, #imgB { transition: opacity .28s ease }
+  .badge{
+    position:absolute; top:10px; background:rgba(0,0,0,.55); color:#fff;
+    border:1px solid rgba(255,255,255,.12); border-radius:10px; font-size:12px; padding:6px 8px;
+  }
+  .badge.left{left:10px} .badge.right{right:10px}
+
+  .track{position:absolute; inset:0; pointer-events:none; display:none}
+  .divider{position:absolute; top:0; bottom:0; width:2px; background:rgba(255,255,255,.96); left:50%}
+  .handle{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:46px; height:46px; border-radius:999px; display:grid; place-items:center;
+    background:rgba(18,22,32,.92); border:1px solid rgba(255,255,255,.14);
+    box-shadow:0 6px 18px rgba(0,0,0,.4);
+  }
+  .handle::before,.handle::after{
+    content:""; width:12px; height:12px; border-top:2px solid #fff; border-left:2px solid #fff; position:absolute; opacity:.9;
+  }
+  .handle::before{ transform: translateX(-13px) rotate(-45deg) }
+  .handle::after{  transform: translateX(13px) rotate(135deg)  }
+  .rangeRow{display:flex; align-items:center; gap:10px}
+  .rangeRow input[type=range]{flex:1; height:36px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>築地・定点撮影｜ビフォー・アフター比較</h1>
+    <div class="panel" id="controlPanel">
+      <div class="grid">
+        <div>
+          <label>左（古い）</label>
+          <select id="leftSel" aria-label="左の画像（古い）"></select>
+        </div>
+        <div>
+          <label>右（新しい）</label>
+          <select id="rightSel" aria-label="右の画像（新しい）"></select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div class="seg" role="tablist" aria-label="表示モード">
+          <button id="tabFade" role="tab" aria-selected="true" class="active">フェード</button>
+          <button id="tabCut"  role="tab" aria-selected="false">スライダー</button>
+        </div>
+        <button id="toggleBtn" title="ワンタップ切替（フェード：0%↔100%／スライダー：中央↔端）">切替</button>
+      </div>
+
+      <div class="rangeRow" id="fadeRow" style="margin-top:8px">
+        <label>フェード</label>
+        <input id="fadeRange" type="range" min="0" max="100" value="0" aria-label="フェード量（%）">
+        <span class="hint" id="fadePct">0%</span>
+      </div>
+
+      <div class="rangeRow" id="cutRow" style="margin-top:8px; display:none">
+        <label>境界</label>
+        <input id="cutRange" type="range" min="0" max="100" value="50" aria-label="境界位置（%）">
+        <span class="hint" id="cutPct">50%</span>
+      </div>
+
+      <div class="status" style="margin-top:6px">
+        <div>モード：<strong id="modeLabel">フェード</strong></div>
+        <div>左：<strong id="leftLabel">-</strong></div>
+        <div>右：<strong id="rightLabel">-</strong></div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="viewerShell" id="viewerShell">
+      <div class="viewer" id="viewer">
+        <div class="layer" id="layerA">
+          <img id="imgA" alt="左（古い）画像">
+          <div class="badge left">左：古い</div>
+        </div>
+        <div class="layer" id="layerB">
+          <img id="imgB" alt="右（新しい）画像" style="opacity:0">
+          <div class="badge right">右：新しい</div>
+        </div>
+        <div class="track" id="track">
+          <div class="divider" id="divider"></div>
+          <div class="handle"  id="handle"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ==== ここだけユーザー編集：同フォルダの画像名 ==== */
+/* #20250804Tsukiji, #20251007Tsukiji, #20251203Tsukiji を想定 */
+const IMAGES = [
+  "20250804Tsukiji.jpg",
+  "20251007Tsukiji.jpg",
+  "20251203Tsukiji.jpg"
+];
+/* デフォルト：左=最も古い 右=最新 */
+const DEFAULT_LEFT  = "20250804Tsukiji.jpg";
+const DEFAULT_RIGHT = "20251203Tsukiji.jpg";
+/* =============================================== */
+
+const $ = id => document.getElementById(id);
+const leftSel=$('leftSel'), rightSel=$('rightSel');
+const imgA=$('imgA'), imgB=$('imgB');
+const layerA=$('layerA'), layerB=$('layerB');
+const viewer=$('viewer'), viewerShell=$('viewerShell'), controlPanel=$('controlPanel');
+const tabFade=$('tabFade'), tabCut=$('tabCut'), toggleBtn=$('toggleBtn');
+const fadeRow=$('fadeRow'), fadeRange=$('fadeRange'), fadePct=$('fadePct');
+const cutRow=$('cutRow'),  cutRange=$('cutRange'),   cutPct=$('cutPct');
+const modeLabel=$('modeLabel'), leftLabel=$('leftLabel'), rightLabel=$('rightLabel');
+const track=$('track'), divider=$('divider'), handle=$('handle');
+
+let mode='fade';
+let dragging=false;
+let ratio=16/9;
+
+/* ---- ユーティリティ ---- */
+const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
+
+/* ファイル名から YYYYMMDD を拾ってラベルにする（20250804Tsukiji.jpg など想定） */
+function ymdParts(fn){
+  // 2025_08_04Tsukiji.jpg / 2025-08-04_xxx などもある程度吸収
+  const m = fn.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})/);
+  return m ? {y:m[1], m:m[2], d:m[3]} : null;
+}
+function ymdString(fn){
+  const p = ymdParts(fn);
+  return p ? `${p.y}-${p.m}-${p.d}` : null;
+}
+function labelFromFilename(fn){
+  const y = ymdString(fn);
+  if(!y) return fn;
+  // 例：2025-08-04 築地
+  const rest = fn.replace(/\.[^.]+$/,''); // 拡張子を外す
+  const idx = rest.search(/\d{4}[_-]?\d{2}[_-]?\d{2}/);
+  let place = '';
+  if(idx >= 0) place = rest.slice(idx + 8); // YYYYMMDDの後ろ
+  place = place.replace(/^[_-]+/,''); // 先頭の_や-を削る
+  return place ? `${y} ${place}` : y;
+}
+function isOlder(a,b){
+  const A = ymdString(a), B = ymdString(b);
+  return !A || !B || A <= B;
+}
+function preload(src){ const i=new Image(); i.src=src; }
+
+/* ---- セレクト初期化 ---- */
+function populate(){
+  [leftSel,rightSel].forEach(sel=>{
+    sel.innerHTML='';
+    IMAGES.forEach(fn=>{
+      const o=document.createElement('option');
+      o.value=fn; o.textContent=labelFromFilename(fn);
+      sel.appendChild(o);
+    });
+  });
+  leftSel.value=DEFAULT_LEFT;
+  rightSel.value=DEFAULT_RIGHT;
+  enforceChronology();
+}
+function enforceChronology(){
+  const L=leftSel.value, R=rightSel.value;
+  if(!isOlder(L,R)){ leftSel.value=R; rightSel.value=L; }
+  leftLabel.textContent=labelFromFilename(leftSel.value);
+  rightLabel.textContent=labelFromFilename(rightSel.value);
+  loadImages();
+}
+
+/* ---- 画像読み込み＆比率更新・レイアウト ---- */
+function loadImages(){
+  const L=leftSel.value, R=rightSel.value;
+  preload(L); preload(R);
+  imgA.src=L; imgB.src=R;
+  imgA.alt=`左（古い）：${labelFromFilename(L)}`;
+  imgB.alt=`右（新しい）：${labelFromFilename(R)}`;
+
+  const update=()=>{
+    const ra = imgA.naturalWidth / imgA.naturalHeight;
+    const rb = imgB.naturalWidth / imgB.naturalHeight;
+    if(Number.isFinite(ra)&&ra>0&&Number.isFinite(rb)&&rb>0){ ratio = Math.min(ra, rb); }
+    layoutViewer();
+    imgB.style.clipPath = 'none';
+    if(mode==='fade'){ setFade(fadeRange.value); } else { setCut(cutRange.value); }
+  };
+  if(imgA.complete && imgB.complete) update();
+  else{
+    let c=0; const cb=()=>{ if(++c>=2) update(); };
+    imgA.onload=cb; imgB.onload=cb;
+  }
+}
+
+/* できるだけ大きく＆縦切れしないよう自動フィット */
+function layoutViewer(){
+  const vw = document.querySelector('.wrap').clientWidth;
+  const vh = window.innerHeight;
+  const panelH = controlPanel.getBoundingClientRect().height + 24;
+  const maxH = Math.max(180, vh - panelH - 16);
+  let w = vw;
+  let h = Math.floor(w / ratio);
+  if(h > maxH){ h = maxH; w = Math.floor(h * ratio); }
+  viewerShell.style.width = w + 'px';
+  viewerShell.style.height = h + 'px';
+}
+
+/* ---- モード切替 ---- */
+function setMode(next){
+  mode = next;
+  const isFade = (mode==='fade');
+  tabFade.classList.toggle('active', isFade);
+  tabCut.classList.toggle('active', !isFade);
+  tabFade.setAttribute('aria-selected', String(isFade));
+  tabCut.setAttribute('aria-selected',  String(!isFade));
+  modeLabel.textContent = isFade ? 'フェード' : 'スライダー';
+
+  fadeRow.style.display = isFade ? '' : 'none';
+  cutRow.style.display  = isFade ? 'none' : '';
+  track.style.display   = isFade ? 'none' : 'block';
+
+  if(isFade){
+    imgB.style.clipPath = 'none';
+    setFade(fadeRange.value);
+  }else{
+    imgA.style.opacity = 1;
+    imgB.style.opacity = 1;
+    setCut(cutRange.value);
+  }
+}
+
+/* ---- フェード ---- */
+function setFade(v){
+  const p = clamp(Number(v), 0, 100);
+  fadeRange.value = p;
+  fadePct.textContent = p + '%';
+  imgA.style.opacity = 1;
+  imgB.style.opacity = (p/100).toString();
+}
+
+/* ---- スライダー ---- */
+function setCut(v){
+  const p = clamp(Number(v), 0, 100);
+  cutRange.value = p;
+  cutPct.textContent = p + '%';
+  imgA.style.opacity = 1;
+  imgB.style.opacity = 1;
+  const x = p.toFixed(2);
+  imgB.style.clipPath = `inset(0 ${100 - x}% 0 0)`;
+  divider.style.left = x+'%';
+  handle.style.left  = x+'%';
+}
+
+/* ---- 画像上ドラッグ操作 ---- */
+function clientXtoPercent(clientX){
+  const r = viewer.getBoundingClientRect();
+  const x = clamp(clientX, r.left, r.right);
+  return ((x - r.left) / r.width) * 100;
+}
+let pointerId=null;
+viewer.addEventListener('pointerdown', e=>{
+  pointerId=e.pointerId; viewer.setPointerCapture?.(pointerId); dragging=true;
+  const p = clientXtoPercent(e.clientX);
+  mode==='fade' ? setFade(p) : setCut(p);
+});
+window.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  const p = clientXtoPercent(e.clientX);
+  mode==='fade' ? setFade(p) : setCut(p);
+});
+['pointerup','pointercancel','pointerleave'].forEach(t=>{
+  window.addEventListener(t, ()=>{
+    dragging=false;
+    if(pointerId!=null){ viewer.releasePointerCapture?.(pointerId); pointerId=null; }
+  });
+});
+
+/* ---- 入力イベント ---- */
+fadeRange.addEventListener('input', e=> setFade(e.target.value));
+fadeRange.addEventListener('change',e=> setFade(e.target.value));
+cutRange .addEventListener('input', e=> setCut(e.target.value));
+cutRange .addEventListener('change',e=> setCut(e.target.value));
+
+/* ---- UI操作 ---- */
+tabFade.addEventListener('click', ()=> setMode('fade'));
+tabCut .addEventListener('click', ()=> setMode('cut'));
+toggleBtn.addEventListener('click', ()=>{
+  if(mode==='fade'){
+    const next = (Number(fadeRange.value) < 50) ? 100 : 0;
+    setFade(next);
+  }else{
+    const next = (Number(cutRange.value) !== 50) ? 50 : 100;
+    setCut(next);
+  }
+});
+window.addEventListener('keydown', (e)=>{
+  const step = e.shiftKey ? 5 : 1;
+  if(e.key==='s'||e.key==='S'){ setMode(mode==='fade'?'cut':'fade'); }
+  else if(mode==='fade' && (e.key==='ArrowLeft'||e.key==='ArrowRight')){
+    setFade(Number(fadeRange.value) + (e.key==='ArrowRight'? step : -step));
+  }else if(mode==='cut' && (e.key==='ArrowLeft'||e.key==='ArrowRight')){
+    setCut(Number(cutRange.value) + (e.key==='ArrowRight'? step : -step));
+  }else if(e.key==='f'||e.key==='F'){
+    if(mode==='fade'){ const next=(Number(fadeRange.value)<50)?100:0; setFade(next); }
+  }
+});
+
+/* ---- セレクト変更 ---- */
+leftSel.addEventListener('change', enforceChronology);
+rightSel.addEventListener('change', enforceChronology);
+
+/* ---- レイアウト ---- */
+window.addEventListener('resize', layoutViewer);
+
+/* ---- 初期化 ---- */
+populate();
+setMode('fade');
+setFade(0);
+IMAGES.forEach(preload);
+layoutViewer();
+</script>
+</body>
+</html>
