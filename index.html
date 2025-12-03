@@ -1,9 +1,10 @@
+```html
 <!doctype html>
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>築地・定点ビフォーアフター比較（フェード＋スライダー）</title>
+<title>築地・定点ビフォーアフター比較（フェード＋スライダー＋スクロール）</title>
 <meta name="color-scheme" content="light dark" />
 <style>
   :root{
@@ -40,6 +41,7 @@
   .status{font-size:12px; color:var(--muted); display:flex; gap:12px; flex-wrap:wrap}
   .status strong{color:var(--fg)}
 
+  /* ビューア本体 */
   .viewerShell{
     margin-top:10px; background:var(--card);
     border:1px solid var(--border); border-radius:14px; overflow:hidden;
@@ -58,6 +60,7 @@
   }
   .badge.left{left:10px} .badge.right{right:10px}
 
+  /* スライダーUI */
   .track{position:absolute; inset:0; pointer-events:none; display:none}
   .divider{position:absolute; top:0; bottom:0; width:2px; background:rgba(255,255,255,.96); left:50%}
   .handle{
@@ -73,6 +76,29 @@
   .handle::after{  transform: translateX(13px) rotate(135deg)  }
   .rangeRow{display:flex; align-items:center; gap:10px}
   .rangeRow input[type=range]{flex:1; height:36px}
+
+  /* スクロール比較セクション */
+  .scrollSection{
+    margin-top:24px;
+    padding:24px 0 60px;
+  }
+  .scrollSection h2{
+    font-size: clamp(16px,2vw,20px);
+    margin:0 0 4px;
+  }
+  .scrollSection p{
+    margin:0 0 12px;
+    font-size:13px;
+    color:var(--muted);
+  }
+  .scrollShell{
+    position:relative;
+  }
+  .scrollViewerNote{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:6px;
+  }
 </style>
 </head>
 <body>
@@ -120,6 +146,7 @@
   </header>
 
   <main>
+    <!-- 手動比較ビューア -->
     <div class="viewerShell" id="viewerShell">
       <div class="viewer" id="viewer">
         <div class="layer" id="layerA">
@@ -136,12 +163,32 @@
         </div>
       </div>
     </div>
+
+    <!-- スクロールで３枚連続比較 -->
+    <section class="scrollSection" id="scrollSection">
+      <h2>スクロールで３枚連続比較</h2>
+      <p>このブロックの中をゆっくりスクロールすると、古い → 中間 → 最新の順にフェードしながら切り替わります。</p>
+
+      <div class="viewerShell scrollShell" id="scrollViewerShell">
+        <div class="viewer" id="scrollViewer">
+          <div class="layer">
+            <img id="scrollImgA" alt="スクロール比較：下地画像">
+            <div class="badge left" id="scrollBadgeA"></div>
+          </div>
+          <div class="layer">
+            <img id="scrollImgB" alt="スクロール比較：重ね画像" style="opacity:0">
+            <div class="badge right" id="scrollBadgeB"></div>
+          </div>
+        </div>
+      </div>
+      <div class="scrollViewerNote">※ このセクションにカーソルを置いたまま上下にスクロールすると、変化の流れが見やすくなります。</div>
+    </section>
   </main>
 </div>
 
 <script>
-/* ==== ここだけユーザー編集：同フォルダの画像名 ==== */
-/* #20250804Tsukiji, #20251007Tsukiji, #20251203Tsukiji を想定 */
+/* ==== 画像リスト：同じフォルダにこの３枚を置く想定 ==== */
+/* #20250804Tsukiji, #20251007Tsukiji, #20251203Tsukiji */
 const IMAGES = [
   "20250804Tsukiji.jpg",
   "20251007Tsukiji.jpg",
@@ -163,6 +210,15 @@ const cutRow=$('cutRow'),  cutRange=$('cutRange'),   cutPct=$('cutPct');
 const modeLabel=$('modeLabel'), leftLabel=$('leftLabel'), rightLabel=$('rightLabel');
 const track=$('track'), divider=$('divider'), handle=$('handle');
 
+/* スクロール比較用 */
+const scrollSection = $('scrollSection');
+const scrollViewerShell = $('scrollViewerShell');
+const scrollViewer = $('scrollViewer');
+const scrollImgA = $('scrollImgA');
+const scrollImgB = $('scrollImgB');
+const scrollBadgeA = $('scrollBadgeA');
+const scrollBadgeB = $('scrollBadgeB');
+
 let mode='fade';
 let dragging=false;
 let ratio=16/9;
@@ -170,9 +226,8 @@ let ratio=16/9;
 /* ---- ユーティリティ ---- */
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 
-/* ファイル名から YYYYMMDD を拾ってラベルにする（20250804Tsukiji.jpg など想定） */
+/* ファイル名から YYYYMMDD 部分を拾う（20250804Tsukiji.jpg, 2025_08_04Tsukiji.jpg など） */
 function ymdParts(fn){
-  // 2025_08_04Tsukiji.jpg / 2025-08-04_xxx などもある程度吸収
   const m = fn.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})/);
   return m ? {y:m[1], m:m[2], d:m[3]} : null;
 }
@@ -183,11 +238,10 @@ function ymdString(fn){
 function labelFromFilename(fn){
   const y = ymdString(fn);
   if(!y) return fn;
-  // 例：2025-08-04 築地
   const rest = fn.replace(/\.[^.]+$/,''); // 拡張子を外す
   const idx = rest.search(/\d{4}[_-]?\d{2}[_-]?\d{2}/);
   let place = '';
-  if(idx >= 0) place = rest.slice(idx + 8); // YYYYMMDDの後ろ
+  if(idx >= 0) place = rest.slice(idx + 8);
   place = place.replace(/^[_-]+/,''); // 先頭の_や-を削る
   return place ? `${y} ${place}` : y;
 }
@@ -197,7 +251,7 @@ function isOlder(a,b){
 }
 function preload(src){ const i=new Image(); i.src=src; }
 
-/* ---- セレクト初期化 ---- */
+/* ---- セレクト初期化（左=古い / 右=新しいを保証） ---- */
 function populate(){
   [leftSel,rightSel].forEach(sel=>{
     sel.innerHTML='';
@@ -253,9 +307,15 @@ function layoutViewer(){
   if(h > maxH){ h = maxH; w = Math.floor(h * ratio); }
   viewerShell.style.width = w + 'px';
   viewerShell.style.height = h + 'px';
+
+  /* スクロール用ビューアも同じ比率でフィットさせる */
+  if(scrollViewerShell){
+    scrollViewerShell.style.width = w + 'px';
+    scrollViewerShell.style.height = h + 'px';
+  }
 }
 
-/* ---- モード切替 ---- */
+/* ---- モード切替（フェード / スライダー） ---- */
 function setMode(next){
   mode = next;
   const isFade = (mode==='fade');
@@ -279,7 +339,7 @@ function setMode(next){
   }
 }
 
-/* ---- フェード ---- */
+/* ---- フェード：imgBのopacity制御 ---- */
 function setFade(v){
   const p = clamp(Number(v), 0, 100);
   fadeRange.value = p;
@@ -288,7 +348,7 @@ function setFade(v){
   imgB.style.opacity = (p/100).toString();
 }
 
-/* ---- スライダー ---- */
+/* ---- スライダー：clip-pathで左右を切り替え ---- */
 function setCut(v){
   const p = clamp(Number(v), 0, 100);
   cutRange.value = p;
@@ -301,7 +361,7 @@ function setCut(v){
   handle.style.left  = x+'%';
 }
 
-/* ---- 画像上ドラッグ操作 ---- */
+/* ---- 画像上ドラッグでも操作 ---- */
 function clientXtoPercent(clientX){
   const r = viewer.getBoundingClientRect();
   const x = clamp(clientX, r.left, r.right);
@@ -355,6 +415,78 @@ window.addEventListener('keydown', (e)=>{
   }
 });
 
+/* ==== スクロール連動３枚フェード ==== */
+/* 日付順に並べた配列（古い→新しい）を作る */
+const SCROLL_ORDER = [...IMAGES].sort((a,b)=>{
+  const A = ymdString(a) || '';
+  const B = ymdString(b) || '';
+  return A.localeCompare(B);
+});
+
+/* 初期セット */
+function initScrollViewer(){
+  if(!scrollImgA || !scrollImgB) return;
+  if(SCROLL_ORDER.length < 3) return;
+
+  scrollImgA.src = SCROLL_ORDER[0];
+  scrollImgB.src = SCROLL_ORDER[1];
+  scrollImgA.alt = `スクロール比較：${labelFromFilename(SCROLL_ORDER[0])}`;
+  scrollImgB.alt = `スクロール比較：${labelFromFilename(SCROLL_ORDER[1])}`;
+  scrollBadgeA.textContent = labelFromFilename(SCROLL_ORDER[0]);
+  scrollBadgeB.textContent = labelFromFilename(SCROLL_ORDER[1]);
+  scrollImgB.style.opacity = 0;
+}
+
+/* t: 0〜1 のスクロール進捗で、どのペア＆フェード量にするか決める */
+function updateScrollViewer(t){
+  if(!scrollImgA || !scrollImgB) return;
+  t = clamp(t, 0, 1);
+
+  const [oldImg, midImg, newImg] = SCROLL_ORDER;
+
+  let base, over, local;
+  if(t < 0.5){
+    // 0〜0.5：古い→中間
+    base = oldImg;
+    over = midImg;
+    local = t / 0.5; // 0〜1
+  }else{
+    // 0.5〜1：中間→新しい
+    base = midImg;
+    over = newImg;
+    local = (t - 0.5) / 0.5; // 0〜1
+  }
+
+  if(!scrollImgA.src.endsWith(base)){
+    scrollImgA.src = base;
+    scrollImgA.alt = `スクロール比較：${labelFromFilename(base)}`;
+    scrollBadgeA.textContent = labelFromFilename(base);
+  }
+  if(!scrollImgB.src.endsWith(over)){
+    scrollImgB.src = over;
+    scrollImgB.alt = `スクロール比較：${labelFromFilename(over)}`;
+    scrollBadgeB.textContent = labelFromFilename(over);
+  }
+
+  scrollImgA.style.opacity = 1;
+  scrollImgB.style.opacity = local.toFixed(3);
+}
+
+/* スクロール量を 0〜1 に正規化して updateScrollViewer に渡す */
+function handleScrollSection(){
+  if(!scrollSection) return;
+  const rect = scrollSection.getBoundingClientRect();
+  const vh = window.innerHeight;
+
+  // セクションが画面に入ってから出るまでを 0〜1 にマッピング
+  const total = rect.height + vh;
+  const passed = vh - rect.top;
+  const t = clamp(passed / total, 0, 1);
+  updateScrollViewer(t);
+}
+
+window.addEventListener('scroll', handleScrollSection);
+
 /* ---- セレクト変更 ---- */
 leftSel.addEventListener('change', enforceChronology);
 rightSel.addEventListener('change', enforceChronology);
@@ -368,6 +500,11 @@ setMode('fade');
 setFade(0);
 IMAGES.forEach(preload);
 layoutViewer();
+
+/* スクロール用ビューア初期化 */
+initScrollViewer();
+handleScrollSection();
 </script>
 </body>
 </html>
+```
