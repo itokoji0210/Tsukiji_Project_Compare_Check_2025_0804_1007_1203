@@ -1,10 +1,9 @@
-```html
 <!doctype html>
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>築地・定点ビフォーアフター比較（フェード＋スライダー＋スクロール）</title>
+<title>築地・定点ビフォーアフター比較（フェード＋スライダー＋タイムバー）</title>
 <meta name="color-scheme" content="light dark" />
 <style>
   :root{
@@ -60,7 +59,7 @@
   }
   .badge.left{left:10px} .badge.right{right:10px}
 
-  /* スライダーUI */
+  /* スライダーUI（左右切り替え） */
   .track{position:absolute; inset:0; pointer-events:none; display:none}
   .divider{position:absolute; top:0; bottom:0; width:2px; background:rgba(255,255,255,.96); left:50%}
   .handle{
@@ -77,27 +76,29 @@
   .rangeRow{display:flex; align-items:center; gap:10px}
   .rangeRow input[type=range]{flex:1; height:36px}
 
-  /* スクロール比較セクション */
-  .scrollSection{
+  /* タイムバー比較セクション */
+  .timeSection{
     margin-top:24px;
-    padding:24px 0 60px;
+    padding:16px 0 40px;
   }
-  .scrollSection h2{
+  .timeSection h2{
     font-size: clamp(16px,2vw,20px);
     margin:0 0 4px;
   }
-  .scrollSection p{
-    margin:0 0 12px;
+  .timeSection p{
+    margin:0 0 10px;
     font-size:13px;
     color:var(--muted);
   }
-  .scrollShell{
-    position:relative;
-  }
-  .scrollViewerNote{
+  .ticks{
+    display:flex;
+    justify-content:space-between;
+    margin-top:4px;
     font-size:11px;
     color:var(--muted);
-    margin-top:6px;
+  }
+  .ticks span{
+    transform:translateX(-50%);
   }
 </style>
 </head>
@@ -146,7 +147,7 @@
   </header>
 
   <main>
-    <!-- 手動比較ビューア -->
+    <!-- 手動比較ビューア（２枚） -->
     <div class="viewerShell" id="viewerShell">
       <div class="viewer" id="viewer">
         <div class="layer" id="layerA">
@@ -164,24 +165,34 @@
       </div>
     </div>
 
-    <!-- スクロールで３枚連続比較 -->
-    <section class="scrollSection" id="scrollSection">
-      <h2>スクロールで３枚連続比較</h2>
-      <p>このブロックの中をゆっくりスクロールすると、古い → 中間 → 最新の順にフェードしながら切り替わります。</p>
+    <!-- タイムバーで３枚を連続比較 -->
+    <section class="timeSection">
+      <h2>時間バーで３枚の変化を見る</h2>
+      <p>バーを左から右に動かすと、古い → 中間 → 最新の順に滑らかに切り替わります。</p>
 
-      <div class="viewerShell scrollShell" id="scrollViewerShell">
-        <div class="viewer" id="scrollViewer">
+      <div class="viewerShell" id="timeViewerShell">
+        <div class="viewer" id="timeViewer">
           <div class="layer">
-            <img id="scrollImgA" alt="スクロール比較：下地画像">
-            <div class="badge left" id="scrollBadgeA"></div>
+            <img id="timeImgA" alt="時間バー比較：下地画像">
+            <div class="badge left" id="timeBadgeA"></div>
           </div>
           <div class="layer">
-            <img id="scrollImgB" alt="スクロール比較：重ね画像" style="opacity:0">
-            <div class="badge right" id="scrollBadgeB"></div>
+            <img id="timeImgB" alt="時間バー比較：重ね画像" style="opacity:0">
+            <div class="badge right" id="timeBadgeB"></div>
           </div>
         </div>
       </div>
-      <div class="scrollViewerNote">※ このセクションにカーソルを置いたまま上下にスクロールすると、変化の流れが見やすくなります。</div>
+
+      <div class="rangeRow" style="margin-top:10px">
+        <label>時間バー</label>
+        <input id="timeRange" type="range" min="0" max="100" value="0" aria-label="時間バー（0=最も古い／100=最新）">
+        <span class="hint" id="timePct">0%</span>
+      </div>
+      <div class="ticks">
+        <span id="tickOld">最も古い</span>
+        <span id="tickMid">中間</span>
+        <span id="tickNew">最新</span>
+      </div>
     </section>
   </main>
 </div>
@@ -202,7 +213,6 @@ const DEFAULT_RIGHT = "20251203Tsukiji.jpg";
 const $ = id => document.getElementById(id);
 const leftSel=$('leftSel'), rightSel=$('rightSel');
 const imgA=$('imgA'), imgB=$('imgB');
-const layerA=$('layerA'), layerB=$('layerB');
 const viewer=$('viewer'), viewerShell=$('viewerShell'), controlPanel=$('controlPanel');
 const tabFade=$('tabFade'), tabCut=$('tabCut'), toggleBtn=$('toggleBtn');
 const fadeRow=$('fadeRow'), fadeRange=$('fadeRange'), fadePct=$('fadePct');
@@ -210,14 +220,18 @@ const cutRow=$('cutRow'),  cutRange=$('cutRange'),   cutPct=$('cutPct');
 const modeLabel=$('modeLabel'), leftLabel=$('leftLabel'), rightLabel=$('rightLabel');
 const track=$('track'), divider=$('divider'), handle=$('handle');
 
-/* スクロール比較用 */
-const scrollSection = $('scrollSection');
-const scrollViewerShell = $('scrollViewerShell');
-const scrollViewer = $('scrollViewer');
-const scrollImgA = $('scrollImgA');
-const scrollImgB = $('scrollImgB');
-const scrollBadgeA = $('scrollBadgeA');
-const scrollBadgeB = $('scrollBadgeB');
+/* 時間バー比較用 */
+const timeViewerShell = $('timeViewerShell');
+const timeViewer = $('timeViewer');
+const timeImgA = $('timeImgA');
+const timeImgB = $('timeImgB');
+const timeBadgeA = $('timeBadgeA');
+const timeBadgeB = $('timeBadgeB');
+const timeRange = $('timeRange');
+const timePct   = $('timePct');
+const tickOld = $('tickOld');
+const tickMid = $('tickMid');
+const tickNew = $('tickNew');
 
 let mode='fade';
 let dragging=false;
@@ -228,7 +242,7 @@ const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 
 /* ファイル名から YYYYMMDD 部分を拾う（20250804Tsukiji.jpg, 2025_08_04Tsukiji.jpg など） */
 function ymdParts(fn){
-  const m = fn.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})/);
+  const m = fn.match(/(\d{4})[_-]?(0[1-9]|1[0-2])[_-]?(0[1-9]|[12][0-9]|3[01])/);
   return m ? {y:m[1], m:m[2], d:m[3]} : null;
 }
 function ymdString(fn){
@@ -308,10 +322,10 @@ function layoutViewer(){
   viewerShell.style.width = w + 'px';
   viewerShell.style.height = h + 'px';
 
-  /* スクロール用ビューアも同じ比率でフィットさせる */
-  if(scrollViewerShell){
-    scrollViewerShell.style.width = w + 'px';
-    scrollViewerShell.style.height = h + 'px';
+  /* 時間バー用ビューアも同じ比率でフィットさせる */
+  if(timeViewerShell){
+    timeViewerShell.style.width = w + 'px';
+    timeViewerShell.style.height = h + 'px';
   }
 }
 
@@ -415,77 +429,74 @@ window.addEventListener('keydown', (e)=>{
   }
 });
 
-/* ==== スクロール連動３枚フェード ==== */
+/* ==== 時間バー連動３枚フェード ==== */
 /* 日付順に並べた配列（古い→新しい）を作る */
-const SCROLL_ORDER = [...IMAGES].sort((a,b)=>{
+const TIME_ORDER = [...IMAGES].sort((a,b)=>{
   const A = ymdString(a) || '';
   const B = ymdString(b) || '';
   return A.localeCompare(B);
 });
 
-/* 初期セット */
-function initScrollViewer(){
-  if(!scrollImgA || !scrollImgB) return;
-  if(SCROLL_ORDER.length < 3) return;
+/* ラベル更新 */
+function initTimeViewer(){
+  if(!timeImgA || !timeImgB) return;
+  if(TIME_ORDER.length < 3) return;
 
-  scrollImgA.src = SCROLL_ORDER[0];
-  scrollImgB.src = SCROLL_ORDER[1];
-  scrollImgA.alt = `スクロール比較：${labelFromFilename(SCROLL_ORDER[0])}`;
-  scrollImgB.alt = `スクロール比較：${labelFromFilename(SCROLL_ORDER[1])}`;
-  scrollBadgeA.textContent = labelFromFilename(SCROLL_ORDER[0]);
-  scrollBadgeB.textContent = labelFromFilename(SCROLL_ORDER[1]);
-  scrollImgB.style.opacity = 0;
+  const [oldImg, midImg, newImg] = TIME_ORDER;
+
+  timeImgA.src = oldImg;
+  timeImgB.src = midImg;
+  timeImgA.alt = `時間バー比較：${labelFromFilename(oldImg)}`;
+  timeImgB.alt = `時間バー比較：${labelFromFilename(midImg)}`;
+  timeBadgeA.textContent = labelFromFilename(oldImg);
+  timeBadgeB.textContent = labelFromFilename(midImg);
+  timeImgB.style.opacity = 0;
+
+  tickOld.textContent = labelFromFilename(oldImg);
+  tickMid.textContent = labelFromFilename(midImg);
+  tickNew.textContent = labelFromFilename(newImg);
 }
 
-/* t: 0〜1 のスクロール進捗で、どのペア＆フェード量にするか決める */
-function updateScrollViewer(t){
-  if(!scrollImgA || !scrollImgB) return;
-  t = clamp(t, 0, 1);
+/* t: 0〜100 のスライダー値で、どのペア＆フェード量にするか決める */
+function updateTimeViewer(v){
+  if(!timeImgA || !timeImgB) return;
+  const t = clamp(Number(v), 0, 100);
+  timeRange.value = t;
+  timePct.textContent = `${t}%`;
 
-  const [oldImg, midImg, newImg] = SCROLL_ORDER;
+  const [oldImg, midImg, newImg] = TIME_ORDER;
 
   let base, over, local;
-  if(t < 0.5){
-    // 0〜0.5：古い→中間
+  if(t <= 50){
+    // 0〜50：古い→中間
     base = oldImg;
     over = midImg;
-    local = t / 0.5; // 0〜1
+    local = t / 50; // 0〜1
   }else{
-    // 0.5〜1：中間→新しい
+    // 50〜100：中間→新しい
     base = midImg;
     over = newImg;
-    local = (t - 0.5) / 0.5; // 0〜1
+    local = (t - 50) / 50; // 0〜1
   }
 
-  if(!scrollImgA.src.endsWith(base)){
-    scrollImgA.src = base;
-    scrollImgA.alt = `スクロール比較：${labelFromFilename(base)}`;
-    scrollBadgeA.textContent = labelFromFilename(base);
+  if(!timeImgA.src.endsWith(base)){
+    timeImgA.src = base;
+    timeImgA.alt = `時間バー比較：${labelFromFilename(base)}`;
+    timeBadgeA.textContent = labelFromFilename(base);
   }
-  if(!scrollImgB.src.endsWith(over)){
-    scrollImgB.src = over;
-    scrollImgB.alt = `スクロール比較：${labelFromFilename(over)}`;
-    scrollBadgeB.textContent = labelFromFilename(over);
+  if(!timeImgB.src.endsWith(over)){
+    timeImgB.src = over;
+    timeImgB.alt = `時間バー比較：${labelFromFilename(over)}`;
+    timeBadgeB.textContent = labelFromFilename(over);
   }
 
-  scrollImgA.style.opacity = 1;
-  scrollImgB.style.opacity = local.toFixed(3);
+  timeImgA.style.opacity = 1;
+  timeImgB.style.opacity = local.toFixed(3);
 }
 
-/* スクロール量を 0〜1 に正規化して updateScrollViewer に渡す */
-function handleScrollSection(){
-  if(!scrollSection) return;
-  const rect = scrollSection.getBoundingClientRect();
-  const vh = window.innerHeight;
-
-  // セクションが画面に入ってから出るまでを 0〜1 にマッピング
-  const total = rect.height + vh;
-  const passed = vh - rect.top;
-  const t = clamp(passed / total, 0, 1);
-  updateScrollViewer(t);
-}
-
-window.addEventListener('scroll', handleScrollSection);
+/* 時間バーのイベント */
+timeRange.addEventListener('input', e=> updateTimeViewer(e.target.value));
+timeRange.addEventListener('change', e=> updateTimeViewer(e.target.value));
 
 /* ---- セレクト変更 ---- */
 leftSel.addEventListener('change', enforceChronology);
@@ -501,10 +512,9 @@ setFade(0);
 IMAGES.forEach(preload);
 layoutViewer();
 
-/* スクロール用ビューア初期化 */
-initScrollViewer();
-handleScrollSection();
+/* 時間バー側初期化 */
+initTimeViewer();
+updateTimeViewer(0);
 </script>
 </body>
 </html>
-```
